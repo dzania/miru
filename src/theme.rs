@@ -36,6 +36,7 @@ pub struct Theme {
     pub picker_filter_prompt: Style,
     pub picker_filter_input: Style,
     pub picker_match: Style,
+    pub picker_dir: Style,
     // Reader search
     pub search_highlight: Style,
     pub search_active: Style,
@@ -106,6 +107,7 @@ impl Theme {
             picker_match: Style::default()
                 .fg(Color::Magenta)
                 .add_modifier(Modifier::UNDERLINED),
+            picker_dir: Style::default().fg(Color::DarkGray),
             search_highlight: Style::default().fg(Color::Black).bg(Color::Yellow),
             search_active: Style::default()
                 .fg(Color::Black)
@@ -187,6 +189,7 @@ impl Theme {
             picker_match: Style::default()
                 .fg(Color::Rgb(170, 0, 170))
                 .add_modifier(Modifier::UNDERLINED),
+            picker_dir: Style::default().fg(Color::Rgb(140, 140, 140)),
             search_highlight: Style::default()
                 .fg(Color::Black)
                 .bg(Color::Rgb(255, 230, 100)),
