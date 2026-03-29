@@ -1,0 +1,12 @@
+[package]
+name = "miru"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.29"
+terminal-light = "1.8"
+pulldown-cmark = "0.13"
+clap = { version = "4.6.0", features = ["derive"] }
+fuzzy-matcher = "0.3"
