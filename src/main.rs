@@ -2,7 +2,11 @@ mod markdown;
 mod theme;
 
 use std::collections::HashSet;
-use std::{fs, io, path::{Path, PathBuf}, time::SystemTime};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 use theme::Theme;
 
 use clap::Parser;
@@ -106,11 +110,7 @@ struct PickerState<'a> {
     filter_text: &'a str,
 }
 
-fn draw_picker(
-    frame: &mut ratatui::Frame,
-    state: &PickerState,
-    theme: &Theme,
-) {
+fn draw_picker(frame: &mut ratatui::Frame, state: &PickerState, theme: &Theme) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -153,6 +153,23 @@ fn draw_picker(
         let name = path.display().to_string();
         let is_selected = vi == state.selected;
 
+        // Split into directory prefix and filename
+        let (dir_prefix, filename) = if let Some(parent) = path.parent() {
+            let parent_str = parent.display().to_string();
+            if parent_str == "." {
+                (String::new(), name.clone())
+            } else {
+                let prefix = format!("{}/", parent_str.strip_prefix("./").unwrap_or(&parent_str));
+                let fname = path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or(name.clone());
+                (prefix, fname)
+            }
+        } else {
+            (String::new(), name.clone())
+        };
+
         let gutter = if is_selected { "▌ " } else { "  " };
         let base_style = if is_selected {
             theme.picker_selected
@@ -170,14 +187,36 @@ fn draw_picker(
         )];
 
         if !state.filter_text.is_empty() && !matched_indices.is_empty() {
-            spans.extend(styled_filename_with_matches(
-                &name,
-                matched_indices,
-                base_style,
-                theme.picker_match,
-            ));
+            if !dir_prefix.is_empty() {
+                spans.extend(styled_filename_with_matches(
+                    &dir_prefix,
+                    matched_indices,
+                    theme.picker_dir,
+                    theme.picker_match,
+                ));
+                let shifted: HashSet<usize> = matched_indices
+                    .iter()
+                    .filter_map(|&i| i.checked_sub(dir_prefix.len()))
+                    .collect();
+                spans.extend(styled_filename_with_matches(
+                    &filename,
+                    &shifted,
+                    base_style,
+                    theme.picker_match,
+                ));
+            } else {
+                spans.extend(styled_filename_with_matches(
+                    &filename,
+                    matched_indices,
+                    base_style,
+                    theme.picker_match,
+                ));
+            }
         } else {
-            spans.push(Span::styled(name, base_style));
+            if !dir_prefix.is_empty() {
+                spans.push(Span::styled(dir_prefix, theme.picker_dir));
+            }
+            spans.push(Span::styled(filename, base_style));
         }
         list_lines.push(Line::from(spans));
 
@@ -212,15 +251,20 @@ fn run_picker(
 
     loop {
         let visible: Vec<(usize, HashSet<usize>)> = if filter_text.is_empty() {
-            files.iter().enumerate().map(|(i, _)| (i, HashSet::new())).collect()
+            files
+                .iter()
+                .enumerate()
+                .map(|(i, _)| (i, HashSet::new()))
+                .collect()
         } else {
             files
                 .iter()
                 .enumerate()
                 .filter_map(|(i, p)| {
                     let name = p.display().to_string();
+                    let display_name = name.strip_prefix("./").unwrap_or(&name);
                     matcher
-                        .fuzzy_indices(&name, &filter_text)
+                        .fuzzy_indices(display_name, &filter_text)
                         .map(|(_, indices)| (i, indices.into_iter().collect()))
                 })
                 .collect()
@@ -487,11 +531,26 @@ fn highlight_line(line: &Line<'static>, query: &str, highlight_style: Style) -> 
 
                 // Map lowercased byte offsets back to original string offsets
                 // by walking chars in parallel.
-                let orig_start = map_lower_offset_to_orig(text, &text_lower, last_orig, last_lower, match_start_lower);
-                let orig_end = map_lower_offset_to_orig(text, &text_lower, orig_start, match_start_lower, match_end_lower);
+                let orig_start = map_lower_offset_to_orig(
+                    text,
+                    &text_lower,
+                    last_orig,
+                    last_lower,
+                    match_start_lower,
+                );
+                let orig_end = map_lower_offset_to_orig(
+                    text,
+                    &text_lower,
+                    orig_start,
+                    match_start_lower,
+                    match_end_lower,
+                );
 
                 if orig_start > last_orig {
-                    new_spans.push(Span::styled(text[last_orig..orig_start].to_string(), base_style));
+                    new_spans.push(Span::styled(
+                        text[last_orig..orig_start].to_string(),
+                        base_style,
+                    ));
                 }
                 new_spans.push(Span::styled(
                     text[orig_start..orig_end].to_string(),
@@ -701,7 +760,11 @@ fn run_reader(
                 let search_info = if has_search {
                     Some(format!(
                         "{}/{}",
-                        if tab.matches.is_empty() { 0 } else { tab.current_match + 1 },
+                        if tab.matches.is_empty() {
+                            0
+                        } else {
+                            tab.current_match + 1
+                        },
                         tab.matches.len(),
                     ))
                 } else {
@@ -743,10 +806,7 @@ fn run_reader(
                         Span::raw(tab.search_query.clone()),
                     ];
                     if let Some(ref info) = search_info {
-                        search_spans.push(Span::styled(
-                            format!("  [{info}]"),
-                            theme.help_bar,
-                        ));
+                        search_spans.push(Span::styled(format!("  [{info}]"), theme.help_bar));
                     }
                     let search_line = Line::from(search_spans);
                     frame.render_widget(Paragraph::new(Text::from(search_line)), chunks[chunk_idx]);
@@ -880,19 +940,25 @@ fn run_reader(
 // ── File discovery ───────────────────────────────────────────────────────
 
 fn find_markdown_files() -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(".") else {
-        return Vec::new();
-    };
-    let mut files: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| {
-            p.is_file()
-                && p.extension()
-                    .map(|ext| ext == "md" || ext == "markdown")
-                    .unwrap_or(false)
-        })
-        .collect();
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut dirs = vec![PathBuf::from(".")];
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path
+                .extension()
+                .map(|ext| ext == "md" || ext == "markdown")
+                .unwrap_or(false)
+            {
+                files.push(path);
+            }
+        }
+    }
     files.sort();
     files
 }
@@ -922,7 +988,7 @@ fn main() -> io::Result<()> {
     // If no CLI files and no local .md files, bail
     if reader.tabs.is_empty() && md_files.is_empty() {
         ratatui::restore();
-        eprintln!("No markdown files found in current directory.");
+        eprintln!("No markdown files found in current directory or subdirectories.");
         std::process::exit(1);
     }
 
@@ -965,4 +1031,85 @@ fn main() -> io::Result<()> {
 
     ratatui::restore();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn find_markdown_files_discovers_nested() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+
+        // Create files at root
+        fs::write(base.join("root.md"), "# Root").unwrap();
+        fs::write(base.join("ignore.txt"), "not md").unwrap();
+
+        // Create nested dirs
+        fs::create_dir_all(base.join("sub")).unwrap();
+        fs::write(base.join("sub/nested.md"), "# Nested").unwrap();
+
+        fs::create_dir_all(base.join("sub/deep")).unwrap();
+        fs::write(base.join("sub/deep/deep.markdown"), "# Deep").unwrap();
+
+        // Run from the temp dir
+        let original = std::env::current_dir().unwrap();
+        std::env::set_current_dir(base).unwrap();
+        let files = find_markdown_files();
+        std::env::set_current_dir(original).unwrap();
+
+        let names: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
+        assert!(names.iter().any(|n| n.contains("root.md")));
+        assert!(names.iter().any(|n| n.contains("nested.md")));
+        assert!(names.iter().any(|n| n.contains("deep.markdown")));
+        assert!(!names.iter().any(|n| n.contains("ignore.txt")));
+    }
+
+    #[test]
+    fn find_markdown_files_returns_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+
+        fs::write(base.join("z.md"), "").unwrap();
+        fs::write(base.join("a.md"), "").unwrap();
+        fs::create_dir_all(base.join("m")).unwrap();
+        fs::write(base.join("m/b.md"), "").unwrap();
+
+        let original = std::env::current_dir().unwrap();
+        std::env::set_current_dir(base).unwrap();
+        let files = find_markdown_files();
+        std::env::set_current_dir(original).unwrap();
+
+        let names: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
+        assert_eq!(names, {
+            let mut sorted = names.clone();
+            sorted.sort();
+            sorted
+        });
+    }
+
+    #[test]
+    fn styled_filename_no_matches() {
+        let spans = styled_filename_with_matches(
+            "readme.md",
+            &HashSet::new(),
+            Style::default(),
+            Style::default(),
+        );
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].content.as_ref(), "readme.md");
+    }
+
+    #[test]
+    fn styled_filename_with_some_matches() {
+        let matched: HashSet<usize> = [0, 4].into_iter().collect();
+        let spans =
+            styled_filename_with_matches("readme.md", &matched, Style::default(), Style::default());
+        // 'r' matched, 'ead' normal, 'm' matched, 'e.md' normal
+        let text: String = spans.iter().map(|s| s.content.to_string()).collect();
+        assert_eq!(text, "readme.md");
+        assert!(spans.len() > 1);
+    }
 }

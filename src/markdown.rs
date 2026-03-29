@@ -214,7 +214,11 @@ pub fn parse(content: &str, theme: &Theme, width: u16) -> (Vec<Line<'static>>, V
                         match level {
                             pulldown_cmark::HeadingLevel::H1 => {
                                 let upper = text.to_uppercase();
-                                headings.push(Heading { text, level: lvl, line_index });
+                                headings.push(Heading {
+                                    text,
+                                    level: lvl,
+                                    line_index,
+                                });
                                 lines.push(Line::from(Span::styled(upper, style)));
                                 lines.push(Line::from(Span::styled(
                                     "═".repeat(text_len),
@@ -222,7 +226,11 @@ pub fn parse(content: &str, theme: &Theme, width: u16) -> (Vec<Line<'static>>, V
                                 )));
                             }
                             pulldown_cmark::HeadingLevel::H2 => {
-                                headings.push(Heading { text: text.clone(), level: lvl, line_index });
+                                headings.push(Heading {
+                                    text: text.clone(),
+                                    level: lvl,
+                                    line_index,
+                                });
                                 lines.push(Line::from(Span::styled(text, style)));
                                 lines.push(Line::from(Span::styled(
                                     "─".repeat(text_len),
@@ -230,7 +238,11 @@ pub fn parse(content: &str, theme: &Theme, width: u16) -> (Vec<Line<'static>>, V
                                 )));
                             }
                             _ => {
-                                headings.push(Heading { text: text.clone(), level: lvl, line_index });
+                                headings.push(Heading {
+                                    text: text.clone(),
+                                    level: lvl,
+                                    line_index,
+                                });
                                 lines.push(Line::from(Span::styled(text, style)));
                             }
                         }
@@ -269,10 +281,7 @@ pub fn parse(content: &str, theme: &Theme, width: u16) -> (Vec<Line<'static>>, V
                     }
                     TagEnd::Link => {
                         if !link_url.is_empty() {
-                            current_spans.push(Span::styled(
-                                format!(" ({link_url})"),
-                                theme.link,
-                            ));
+                            current_spans.push(Span::styled(format!(" ({link_url})"), theme.link));
                             link_url.clear();
                         }
                     }
@@ -310,7 +319,10 @@ pub fn parse(content: &str, theme: &Theme, width: u16) -> (Vec<Line<'static>>, V
                 if !current_spans.is_empty() {
                     lines.push(Line::from(std::mem::take(&mut current_spans)));
                 }
-                lines.push(Line::from(Span::styled("─".repeat(width as usize), theme.rule)));
+                lines.push(Line::from(Span::styled(
+                    "─".repeat(width as usize),
+                    theme.rule,
+                )));
                 lines.push(Line::default());
             }
             _ => {}
