@@ -122,7 +122,8 @@ fn draw_picker(frame: &mut ratatui::Frame, state: &PickerState, theme: &Theme) {
         .split(area);
 
     // ── Title / filter bar ──
-    let title_line = if state.filter_mode {
+    // Show "Filter: {text}" while typing OR after confirming a filter; "miru" only when clear.
+    let title_line = if state.filter_mode || !state.filter_text.is_empty() {
         Line::from(vec![
             Span::styled("Filter: ", theme.picker_filter_prompt),
             Span::styled(state.filter_text.to_string(), theme.picker_filter_input),
@@ -170,8 +171,10 @@ fn draw_picker(frame: &mut ratatui::Frame, state: &PickerState, theme: &Theme) {
             (String::new(), name.clone())
         };
 
-        let gutter = if is_selected { "▌ " } else { "  " };
-        let base_style = if is_selected {
+        // While the filter input is active the list is passive — no selection highlight.
+        let show_selection = !state.filter_mode && is_selected;
+        let gutter = if show_selection { "▌ " } else { "  " };
+        let base_style = if show_selection {
             theme.picker_selected
         } else {
             theme.picker_file
@@ -179,7 +182,7 @@ fn draw_picker(frame: &mut ratatui::Frame, state: &PickerState, theme: &Theme) {
 
         let mut spans = vec![Span::styled(
             gutter.to_string(),
-            if is_selected {
+            if show_selection {
                 theme.picker_gutter
             } else {
                 Style::default()
@@ -231,10 +234,14 @@ fn draw_picker(frame: &mut ratatui::Frame, state: &PickerState, theme: &Theme) {
 
     frame.render_widget(Paragraph::new(Text::from(list_lines)), chunks[1]);
 
-    let help = Line::from(Span::styled(
-        "j/k navigate · / filter · enter open · q quit",
-        theme.picker_help,
-    ));
+    let help_text = if state.filter_mode {
+        "enter confirm · esc cancel"
+    } else if !state.filter_text.is_empty() {
+        "j/k navigate · / refilter · esc clear · enter open · q quit"
+    } else {
+        "j/k navigate · / filter · enter open · q quit"
+    };
+    let help = Line::from(Span::styled(help_text, theme.picker_help));
     frame.render_widget(Paragraph::new(Text::from(help)), chunks[2]);
 }
 
@@ -297,37 +304,34 @@ fn run_picker(
             if filter_mode {
                 match key.code {
                     KeyCode::Esc => {
+                        // Cancel: discard what was typed and return to browse mode.
                         filter_mode = false;
                         filter_text.clear();
                     }
                     KeyCode::Backspace => {
                         filter_text.pop();
-                        if filter_text.is_empty() {
-                            filter_mode = false;
-                        }
+                        // Intentionally do NOT auto-exit; user must press Esc to cancel.
                     }
                     KeyCode::Enter => {
-                        if !visible.is_empty() {
-                            return Ok(PickerAction::Open(files[visible[selected].0].clone()));
-                        }
-                    }
-                    KeyCode::Down => {
-                        if !visible.is_empty() {
-                            selected = (selected + 1).min(visible.len().saturating_sub(1));
-                        }
-                    }
-                    KeyCode::Up => {
-                        selected = selected.saturating_sub(1);
+                        // Confirm: lock in the filter, switch to navigate mode.
+                        filter_mode = false;
+                        selected = 0;
                     }
                     KeyCode::Char(c) => {
                         filter_text.push(c);
-                        selected = 0;
                     }
                     _ => {}
                 }
             } else {
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => return Ok(PickerAction::Quit),
+                    KeyCode::Char('q') => return Ok(PickerAction::Quit),
+                    KeyCode::Esc => {
+                        // Clear an active filter; do nothing if there is none.
+                        if !filter_text.is_empty() {
+                            filter_text.clear();
+                            selected = 0;
+                        }
+                    }
                     KeyCode::Char('j') | KeyCode::Down => {
                         if !visible.is_empty() {
                             selected = (selected + 1).min(visible.len().saturating_sub(1));

@@ -2,6 +2,7 @@
 
 Minimal markdown reader I use daily.
 
+![Demo](docs/demo.gif)
 
 ## Usage
 
@@ -34,8 +35,9 @@ Open files directly or run `miru` in a directory to pick from `.md` files.
 | Key | Action |
 |-----|--------|
 | `j/k` | Navigate |
-| `/` | Filter |
-| `Enter` | Open |
+| `/` | Enter filter |
+| `Enter` | Confirm filter / open file |
+| `Esc` | Cancel filter / clear filter |
 | `q` | Quit |
 
 ## Install

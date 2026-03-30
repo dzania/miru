@@ -3,6 +3,9 @@ name = "miru"
 version = "0.1.0"
 edition = "2024"
 
+[dev-dependencies]
+tempfile = "3"
+
 [dependencies]
 ratatui = "0.30"
 crossterm = "0.29"
